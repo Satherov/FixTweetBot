@@ -15,6 +15,7 @@ from database.models.Guild import *
 from database.models.Event import *
 from src.websites import *
 from src.utils import *
+from src.delete_button import DeleteButton
 
 import discore
 
@@ -208,14 +209,16 @@ async def send_fixed_links(
     grouped = group_items(rendered_links, 2000)
     use_original_author_replica = guild.reply_as_original_author_replica
     webhook = await get_or_create_webhook(original_message.channel) if use_original_author_replica else None
+    # A view with a timeout would unregister DeleteButton from the bot once it times out.
+    view = discore.ui.View(timeout=None).add_item(DeleteButton(original_message.author.id))
 
     for i, (message_content, links_in_group) in enumerate(grouped):
         if webhook is not None:
-            coro = webhook_send(webhook, original_message, message_content, guild.reply_silently)
+            coro = webhook_send(webhook, original_message, message_content, guild.reply_silently, view)
         elif i == 0 and guild.reply_to_message:
-            coro = discore.fallback_reply(original_message, message_content, silent=guild.reply_silently)
+            coro = discore.fallback_reply(original_message, message_content, silent=guild.reply_silently, view=view)
         else:
-            coro = original_message.channel.send(message_content, silent=guild.reply_silently)
+            coro = original_message.channel.send(message_content, silent=guild.reply_silently, view=view)
 
         sent, msg = await safe_send_coro(coro, invalid_form_body='Embed size exceeds maximum size', forbidden=True)
         if sent and msg:
@@ -262,7 +265,8 @@ async def webhook_send(
         webhook: discore.Webhook,
         original_message: discore.Message,
         content: str,
-        silent: bool
+        silent: bool,
+        view: discore.ui.View
 ) -> discore.Message:
     """
     Send a fixed link using the original author's display name and avatar.
@@ -271,6 +275,7 @@ async def webhook_send(
     :param original_message: the message associated with the context to reply to
     :param content: the content to send
     :param silent: whether to send the message silently
+    :param view: the view to attach to the message
     :return: the message created by the webhook
     """
 
@@ -279,6 +284,7 @@ async def webhook_send(
         'username': original_message.author.display_name,
         'avatar_url': original_message.author.display_avatar.url,
         'silent': silent,
+        'view': view,
         'wait': True
     }
     if isinstance(original_message.channel, discore.Thread):
@@ -328,6 +334,20 @@ async def edit_original_message(guild: Guild, message: discore.Message, permissi
 class LinkFix(discore.Cog,
              name="link fix",
              description="Link fix events"):
+
+    async def cog_load(self) -> None:
+        """
+        Register the delete button, so the buttons under the fixed links work after a restart
+        """
+
+        self.bot.add_dynamic_items(DeleteButton)
+
+    async def cog_unload(self) -> None:
+        """
+        Unregister the delete button
+        """
+
+        self.bot.remove_dynamic_items(DeleteButton)
 
     @discore.Cog.listener()
     async def on_message(self, message: discore.Message) -> None:

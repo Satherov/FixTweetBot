@@ -286,6 +286,9 @@ settings:
         length_name: "The length of the website name must be less than %{max} characters"
         length_domain: "The length of the website domain must be less than %{max} characters"
 
+delete_button:
+  not_author: "Only the person who posted the original link can delete this message."
+
 misc:
   discord_discovery_description: |
     FixTweetBot is a Discord bot that fixes social media embeds,
